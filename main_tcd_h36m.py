@@ -229,7 +229,7 @@ def mpjpe_impute_error(batch_imp, batch_gt, eval_points):
 
 def evaluate_32(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='best'):
     with torch.no_grad():
-        model_s.eval()
+        # model_s.eval()
         model_l.eval()
         mpjpe_total = 0
 
@@ -264,15 +264,15 @@ def evaluate_32(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='
                     "timepoints": batch["timepoints"].clone()[:, :input_n + 5]
                 }
 
-                if isinstance(model_s, nn.DataParallel):
-                    output = model_s.module.evaluate(s, nsample)
-                else:
-                    output = model_s.evaluate(s, nsample)
-                samples, _, _, _ = output
-                samples = samples.permute(0, 1, 3, 2)  # (B,nsample,L,K)
-                samples_mean = np.mean(samples.cpu().numpy(), axis=1)
-                batch["pose"][:, :input_n + 5] = torch.from_numpy(samples_mean)
-                batch["mask"][:, :input_n + 5] = 1
+                # if isinstance(model_s, nn.DataParallel):
+                #     output = model_s.module.evaluate(s, nsample)
+                # else:
+                #     output = model_s.evaluate(s, nsample)
+                # samples, _, _, _ = output
+                # samples = samples.permute(0, 1, 3, 2)  # (B,nsample,L,K)
+                # samples_mean = np.mean(samples.cpu().numpy(), axis=1)
+                # batch["pose"][:, :input_n + 5] = torch.from_numpy(samples_mean)
+                # batch["mask"][:, :input_n + 5] = 1
 
                 if isinstance(model_l, nn.DataParallel):
                     output = model_l.module.evaluate(batch, nsample)
@@ -361,7 +361,7 @@ def evaluate_32(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='
 
 def evaluate(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='best'):
     with torch.no_grad():
-        model_s.eval()
+        # model_s.eval()
         model_l.eval()
         mpjpe_total = 0
         mpjpe_impute_total = 0
@@ -389,17 +389,17 @@ def evaluate(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='bes
                     "timepoints": batch["timepoints"].clone()[:, :input_n + 5]
                 }
 
-                if isinstance(model_s, nn.DataParallel):
-                    output = model_s.module.evaluate(s, nsample)
-                else:
-                    output = model_s.evaluate(s, nsample)
+                # if isinstance(model_s, nn.DataParallel):
+                #     output = model_s.module.evaluate(s, nsample)
+                # else:
+                #     output = model_s.evaluate(s, nsample)
 
-                samples, _, eval_impute, _ = output
-                samples = samples.permute(0, 1, 3, 2)  # (B,nsample,L,K)
-                samples_mean = np.mean(samples.cpu().numpy(), axis=1)
-                eval_impute = eval_impute.permute(0, 2, 1)
-                batch["pose"][:, :input_n + 5] = torch.from_numpy(samples_mean)
-                batch["mask"][:, :input_n + 5] = 1
+                # samples, _, eval_impute, _ = output
+                # samples = samples.permute(0, 1, 3, 2)  # (B,nsample,L,K)
+                # samples_mean = np.mean(samples.cpu().numpy(), axis=1)
+                # eval_impute = eval_impute.permute(0, 2, 1)
+                # batch["pose"][:, :input_n + 5] = torch.from_numpy(samples_mean)
+                # batch["mask"][:, :input_n + 5] = 1
 
                 if isinstance(model_l, nn.DataParallel):
                     output = model_l.module.evaluate(batch, nsample)
@@ -415,6 +415,7 @@ def evaluate(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='bes
 
                 renorm_pose = []
                 renorm_c_target = []
+                renorm_all_joints_seq = []
 
                 for i in range(len(samples_mean)):
                     renorm_c_target_i = c_target.cpu().data.numpy()[i][input_n:] * 1000
@@ -450,10 +451,10 @@ def evaluate(model_s, model_l, loader, nsample=5, scaler=1, sample_strategy='bes
 
                 mpjpe_current = mpjpe_error(renorm_pose.view(-1, output_n, args.joints, 3),
                                             renorm_c_target.view(-1, output_n, args.joints, 3))
-                mpjpe_impute_current = mpjpe_impute_error(renorm_pose[:, :input_n], renorm_c_target[:, :input_n],
-                                                          eval_impute[:, :input_n])
+                # mpjpe_impute_current = mpjpe_impute_error(renorm_pose[:, :input_n], renorm_c_target[:, :input_n],
+                #                                           eval_impute[:, :input_n])
                 mpjpe_total += mpjpe_current.item()
-                mpjpe_impute_total += mpjpe_impute_current.item()
+                # mpjpe_impute_total += mpjpe_impute_current.item()
 
                 it.set_postfix(
                     ordered_dict={
@@ -491,6 +492,7 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         model = ModelMain(config, device, target_dim=(args.joints * 3))
+        print(">>> total params: {:.2f}M".format(sum(p.numel() for p in model.parameters()) / 1000000.0))
 
         if torch.cuda.device_count() > 1:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -519,28 +521,30 @@ if __name__ == '__main__':
             foldername=output_dir,
             load_state=args.resume
         )
+
     elif args.mode == 'test':
         actions = ["walking", "eating", "smoking", "discussion", "directions",
                    "greeting", "phoning", "posing", "purchases", "sitting",
                    "sittingdown", "takingphoto", "waiting", "walkingdog",
                    "walkingtogether"]
 
-        model_s = ModelMain(config, device, target_dim=(args.joints * 3))
+        # model_s = ModelMain(config, device, target_dim=(args.joints * 3))
         model_l = ModelMain(config, device, target_dim=(args.joints * 3))
 
         if torch.cuda.device_count() > 1:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
-            model_s = nn.DataParallel(model_s)
+            # model_s = nn.DataParallel(model_s)
             model_l = nn.DataParallel(model_l)
 
-        model_s.to(device)
+        # model_s.to(device)
         model_l.to(device)
 
-        if isinstance(model_s, nn.DataParallel) and isinstance(model_l, nn.DataParallel):
-            model_s.module.load_state_dict(torch.load(f'{args.model_s}/model.pth'))
+        if isinstance(model_l, nn.DataParallel):
+        # if isinstance(model_s, nn.DataParallel) and isinstance(model_l, nn.DataParallel):
+            # model_s.module.load_state_dict(torch.load(f'{args.model_s}/model.pth'))
             model_l.module.load_state_dict(torch.load(f'{args.model_l}/model.pth'))
         else:
-            model_s.load_state_dict(torch.load(f'{args.model_s}/model.pth'))
+            # model_s.load_state_dict(torch.load(f'{args.model_s}/model.pth'))
             model_l.load_state_dict(torch.load(f'{args.model_l}/model.pth'))
 
         head = np.array(['act'])
@@ -558,7 +562,8 @@ if __name__ == '__main__':
             eval = evaluate_32 if args.joints == 22 else evaluate
 
             pose, target, mask, ret = eval(
-                model_s,
+                # model_s,
+                None,
                 model_l,
                 test_loader,
                 nsample=5,
