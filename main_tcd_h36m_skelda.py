@@ -81,10 +81,11 @@ def prepare_sequences(batch, batch_size: int, split: str, device):
 
 
 def prepare_batch(sequences_train, sequences_gt, batch_size: int, device):
-    all_seq = np.concatenate([sequences_train, sequences_gt], axis=1)
-
     # Merge joints and coordinates to a single dimension
-    all_seq = all_seq.reshape([batch_size, all_seq.shape[1], -1])
+    sequences_train = sequences_train.reshape([batch_size, sequences_train.shape[1], -1])
+    sequences_gt = sequences_gt.reshape([batch_size, sequences_gt.shape[1], -1])
+
+    all_seq = np.concatenate([sequences_train, sequences_gt], axis=1)
 
     mask1 = np.ones_like(sequences_train)
     mask2 = np.zeros_like(sequences_gt)
