@@ -50,6 +50,7 @@ config_sk = {
 datasets_train = [
     "/datasets/preprocessed/human36m/train_forecast_kppspose_10fps.json",
     # "/datasets/preprocessed/human36m/train_forecast_kppspose.json",
+    # "/datasets/preprocessed/mocap/train_forecast_samples.json"
 ]
 
 # datasets_train = [
@@ -63,6 +64,7 @@ dataset_eval_test = "/datasets/preprocessed/human36m/{}_forecast_kppspose_10fps.
 # dataset_eval_test = "/datasets/preprocessed/human36m/{}_forecast_kppspose.json"
 # dataset_eval_test = "/datasets/preprocessed/mocap/{}_forecast_samples_10fps.json"
 # dataset_eval_test = "/datasets/preprocessed/mocap/{}_forecast_samples_4fps.json"
+# dataset_eval_test = "/datasets/preprocessed/mocap/{}_forecast_samples.json"
 
 num_joints = len(config_sk["select_joints"])
 in_features = num_joints * 3
@@ -72,7 +74,7 @@ dim_used = list(range(in_features))
 
 
 def prepare_sequences(batch, batch_size: int, split: str, device):
-    sequences = utils_pipeline.make_input_sequence(batch, split, "gt-gt")
+    sequences = utils_pipeline.make_input_sequence(batch, split, datamode)
 
     # Convert to meters
     sequences = sequences / 1000.0
@@ -172,7 +174,7 @@ config_dp = {
     "train": {
         "epochs": 50,
         "batch_size": 32,
-        "batch_size_test": 1,
+        "batch_size_test": 16,
         "lr": 1.0e-3,
     },
     "diffusion": {
@@ -450,8 +452,8 @@ def evaluate(
             )
             mpjpe_total += mpjpe_current.item()
 
-            if batch_no == 100:
-                break
+#            if batch_no == 100:
+#                break
 
         print("Average MPJPE:", mpjpe_total / batch_no)
 
@@ -568,8 +570,10 @@ if __name__ == "__main__":
             model,
             label_gen_test,
             nsample=5,
+#            nsample=1,
             scaler=1,
-            sample_strategy="best",
+#            sample_strategy="best",
+            sample_strategy="",
             dlen_test=dlen_test,
         )
 
@@ -581,4 +585,6 @@ if __name__ == "__main__":
         errs[-1] = np.mean(errs[:-1], axis=0)
         actions = np.expand_dims(np.array(["all"] + ["average"]), axis=1)
         value = np.concatenate([actions, errs.astype(np.str)], axis=1)
+        print(head)
+        print(value)
         save_csv_log(head, value, is_create=True, file_name="fde_per_action")
