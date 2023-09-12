@@ -14,7 +14,7 @@ from model import ModelMain
 
 import sys
 
-sys.path.append("/PoseForecaster/")
+sys.path.append("/PoseForecasters/")
 import utils_pipeline
 
 # ==================================================================================================
