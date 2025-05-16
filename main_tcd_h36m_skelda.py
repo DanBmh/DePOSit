@@ -14,57 +14,42 @@ from model import ModelMain
 
 import sys
 
+# ==================================================================================================
+
 sys.path.append("/PoseForecasters/")
 import utils_pipeline
 
-# ==================================================================================================
-
 datamode = "gt-gt"
-# datamode = "pred-gt"
 # datamode = "pred-pred"
 
 config_sk = {
-    # "item_step": 2,
-    # "window_step": 2,
-    "item_step": 1,
-    "window_step": 1,
+    "item_step": 2,
+    "window_step": 2,
+    # "item_step": 1,
+    # "window_step": 1,
     "select_joints": [
-        "hip_middle",
         "hip_right",
-        "knee_right",
-        "ankle_right",
         "hip_left",
+        "knee_right",
         "knee_left",
+        "ankle_right",
         "ankle_left",
         "nose",
-        "shoulder_left",
-        "elbow_left",
-        "wrist_left",
         "shoulder_right",
+        "shoulder_left",
         "elbow_right",
+        "elbow_left",
         "wrist_right",
-        "shoulder_middle",
+        "wrist_left",
     ],
 }
 
 datasets_train = [
-    "/datasets/preprocessed/human36m/train_forecast_kppspose_10fps.json",
-    # "/datasets/preprocessed/human36m/train_forecast_kppspose.json",
-    # "/datasets/preprocessed/mocap/train_forecast_samples.json"
+    "/datasets/preprocessed/human36m/train_forecast_rpt.json",
 ]
 
-# datasets_train = [
-#     "/datasets/preprocessed/mocap/train_forecast_samples_10fps.json",
-#     "/datasets/preprocessed/amass/bmlmovi_train_forecast_samples_10fps.json",
-#     "/datasets/preprocessed/amass/bmlrub_train_forecast_samples_10fps.json",
-#     "/datasets/preprocessed/amass/kit_train_forecast_samples_10fps.json"
-# ]
+dataset_eval_test = "/datasets/preprocessed/human36m/{}_forecast_rpt.json"
 
-dataset_eval_test = "/datasets/preprocessed/human36m/{}_forecast_kppspose_10fps.json"
-# dataset_eval_test = "/datasets/preprocessed/human36m/{}_forecast_kppspose.json"
-# dataset_eval_test = "/datasets/preprocessed/mocap/{}_forecast_samples_10fps.json"
-# dataset_eval_test = "/datasets/preprocessed/mocap/{}_forecast_samples_4fps.json"
-# dataset_eval_test = "/datasets/preprocessed/mocap/{}_forecast_samples.json"
 
 num_joints = len(config_sk["select_joints"])
 in_features = num_joints * 3
@@ -75,9 +60,6 @@ dim_used = list(range(in_features))
 
 def prepare_sequences(batch, batch_size: int, split: str, device):
     sequences = utils_pipeline.make_input_sequence(batch, split, datamode)
-
-    # Convert to meters
-    sequences = sequences / 1000.0
 
     return sequences
 
@@ -173,7 +155,7 @@ config_sk["output_n"] = args.output_n
 config_dp = {
     "train": {
         "epochs": 50,
-        "batch_size": 32,
+        "batch_size": 16,
         "batch_size_test": 16,
         "lr": 1.0e-3,
     },
@@ -300,6 +282,7 @@ def train(
         lr_scheduler.step()
         train_loss.append(avg_loss / batch_no)
         train_loss_epoch.append(epoch_no)
+        print("Train loss:", train_loss[-1])
 
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
             model.eval()
@@ -323,14 +306,11 @@ def train(
 
             valid_loss.append(avg_loss_valid / batch_no)
             valid_loss_epoch.append(epoch_no)
+            print("Validation loss:", valid_loss[-1])
+
             if best_valid_loss > avg_loss_valid:
                 best_valid_loss = avg_loss_valid
-                print(
-                    "\n best loss is updated to ",
-                    avg_loss_valid / batch_no,
-                    "at",
-                    epoch_no,
-                )
+                print("New best loss: ", best_valid_loss, "at", epoch_no)
                 save_state(model, optimizer, lr_scheduler, epoch_no, foldername)
 
             if (epoch_no + 1) == config_dp["epochs"]:
@@ -452,8 +432,8 @@ def evaluate(
             )
             mpjpe_total += mpjpe_current.item()
 
-#            if batch_no == 100:
-#                break
+            # if batch_no == 100:
+            #     break
 
         print("Average MPJPE:", mpjpe_total / batch_no)
 
@@ -496,28 +476,13 @@ if __name__ == "__main__":
         print("Loading datasets ...")
         dataset_train, dlen_train = [], 0
         for dp in datasets_train:
-            cfg = copy.deepcopy(config_sk)
-            if "mocap" in dp:
-                cfg["select_joints"][cfg["select_joints"].index("nose")] = "head_upper"
-
-            ds, dlen = utils_pipeline.load_dataset(dp, "train", cfg)
+            ds, dlen = utils_pipeline.load_dataset(dp, "train", config_sk)
             dataset_train.extend(ds["sequences"])
             dlen_train += dlen
-        esplit = "test" if "mocap" in dataset_eval_test else "eval"
-        cfg = copy.deepcopy(config_sk)
-        if "mocap" in dataset_eval_test:
-            cfg["select_joints"][cfg["select_joints"].index("nose")] = "head_upper"
         dataset_eval, dlen_eval = utils_pipeline.load_dataset(
-            dataset_eval_test, esplit, cfg
+            dataset_eval_test.format("eval"), "eval", config_sk
         )
         dataset_eval = dataset_eval["sequences"]
-
-        # dataset_train, dlen_train = utils_pipeline.load_dataset(
-        #     datapath_preprocessed, "eval", config_sk
-        # )
-        # dataset_eval, dlen_eval = utils_pipeline.load_dataset(
-        #     datapath_preprocessed, "eval", config_sk
-        # )
 
         train(
             model,
@@ -537,22 +502,17 @@ if __name__ == "__main__":
                 sum(p.numel() for p in model.parameters()) / 1000000.0
             )
         )
+        config_dp["train"]["batch_size_test"] = 1
 
         if torch.cuda.device_count() > 1:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
             model = nn.DataParallel(model)
         model.to(device)
 
-        cfg = copy.deepcopy(config_sk)
-        if "mocap" in dataset_eval_test:
-            cfg["select_joints"][cfg["select_joints"].index("nose")] = "head_upper"
         dataset_test, dlen_test = utils_pipeline.load_dataset(
-            dataset_eval_test, "test", cfg
+            dataset_eval_test.format("test"), "test", config_sk
         )
         dataset_test = dataset_test["sequences"]
-        # dataset_test, dlen_test = utils_pipeline.load_dataset(
-        #     datapath_preprocessed, "test", config_sk
-        # )
 
         label_gen_test = utils_pipeline.create_labels_generator(dataset_test, config_sk)
 
@@ -569,10 +529,10 @@ if __name__ == "__main__":
         pose, target, mask, ret = evaluate(
             model,
             label_gen_test,
-            nsample=5,
-#            nsample=1,
+#             nsample=5,
+            nsample=1,
             scaler=1,
-#            sample_strategy="best",
+#             sample_strategy="best",
             sample_strategy="",
             dlen_test=dlen_test,
         )
